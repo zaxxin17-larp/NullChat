@@ -1,0 +1,60 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isSelf(uid) { return signedIn() && request.auth.uid == uid; }
+
+    // Profile + quota counters.
+    // For tamper-proof counters, move reserve/release into a Callable Function
+    // and change the subcollection write rule to `if false` for clients.
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow create, update: if isSelf(uid)
+        && request.resource.data.storageBytes is number
+        && request.resource.data.storageBytes >= 0;
+
+      match /uploadStats/{day} {
+        allow read: if isSelf(uid);
+        allow write: if isSelf(uid) && request.resource.data.count is int
+          && request.resource.data.count >= 0;
+      }
+    }
+
+    // Media index (dedupe + favorites + orphan sweeping). Owner only.
+    match /user_media_index/{uid}/items/{item} {
+      allow read: if isSelf(uid);
+      allow create, update, delete: if isSelf(uid)
+        && request.resource.data.uid == uid
+        && request.resource.data.sizeBytes is number;
+    }
+
+    // Chats and their messages.
+    match /chats/{chatId} {
+      allow read: if signedIn();
+
+      match /messages/{msg} {
+        allow read: if signedIn();
+        allow create: if signedIn()
+          && request.resource.data.senderId == request.auth.uid;
+        // Sender may edit their own; anyone may flag/hide.
+        allow update: if signedIn() && (
+          resource.data.senderId == request.auth.uid
+          || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reported', 'hidden'])
+        );
+        allow delete: if signedIn() && resource.data.senderId == request.auth.uid;
+      }
+    }
+
+    // User reports: write-only for users, read via Admin SDK.
+    match /reports/{id} {
+      allow create: if signedIn() && request.resource.data.reporterId == request.auth.uid;
+      allow read, update, delete: if false;
+    }
+
+    // Server-only collections.
+    match /upload_logs/{id}     { allow read, write: if false; }
+    match /moderation/{id}      { allow read, write: if false; }
+  }
+}

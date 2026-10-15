@@ -1,0 +1,22 @@
+*.iml
+.gradle/
+local.properties
+.idea/
+.DS_Store
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+node_modules/
+functions/node_modules/
+firebase-debug.log
+firestore-debug.log
+
+# Never commit real Firebase config
+app/google-services.json
+
+# Never commit signing material
+keystore.properties
+*.keystore
+*.jks
+*.p12

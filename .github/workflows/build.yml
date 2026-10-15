@@ -1,0 +1,43 @@
+name: Android CI
+
+# Compile-only check: boots its own Gradle (the wrapper jar is intentionally not
+# committed) and supplies a stub google-services.json so the Firebase plugins can
+# run. This does NOT touch any real Firebase project.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  assemble-debug:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK platform 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Provide stub google-services.json
+        run: cp firebase/google-services.sample.json app/google-services.json
+
+      - name: Assemble debug
+        run: gradle assembleDebug --stacktrace --no-daemon

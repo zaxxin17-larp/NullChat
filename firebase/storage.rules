@@ -1,0 +1,51 @@
+rules_version = '2';
+
+// NullChat Storage rules.
+// Layout:
+//   chat_thumbs/{uid}/{mediaId}.webp                     (tiny thumbnails)
+//   chat_media/{uid}/{image|gif|video|voice}/{mediaId}.* (full media)
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function signedIn() { return request.auth != null; }
+    function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
+
+    function allowedType(ct) {
+      return ct.matches('image/(jpeg|jpg|webp|png|gif)')
+          || ct == 'video/mp4' || ct == 'video/webm'
+          || ct.matches('audio/(mpeg|mp4|aac|ogg|3gpp|amr|webm)');
+    }
+
+    // Hard byte cap derived from the declared content type. 0 => reject anything.
+    function sizeCap(ct) {
+      return ct.matches('image/.*') ? 2 * 1024 * 1024      // 2 MB
+           : ct.matches('video/.*') ? 8 * 1024 * 1024      // 8 MB
+           : ct.matches('audio/.*') ? 1 * 1024 * 1024      // 1 MB
+           : 0;
+    }
+
+    // Thumbnails: small images only, capped tightly.
+    match /chat_thumbs/{userId}/{file} {
+      allow read: if signedIn();
+      allow write: if isOwner(userId)
+        && request.resource.size > 0
+        && request.resource.size <= 64 * 1024
+        && request.resource.contentType.matches('image/(webp|jpeg|png)');
+    }
+
+    // Full media.
+    match /chat_media/{userId}/{type}/{file} {
+      allow read: if signedIn();
+      allow create, update: if isOwner(userId)
+        && request.resource.size > 0
+        && request.resource.size <= sizeCap(request.resource.contentType)
+        && allowedType(request.resource.contentType);
+      allow delete: if isOwner(userId);
+    }
+
+    // Everything else is denied.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
